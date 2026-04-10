@@ -1,0 +1,43 @@
+# Project Aura — Python Backend Dependencies
+# Target runtime: Python 3.11+, Modal deployment.
+# Exact versions should be pinned once providers are confirmed.
+
+# --- Core orchestration ---
+pipecat-ai            # Real-time voice pipeline orchestration
+modal                 # Backend deployment runtime
+
+# --- Web framework (session bootstrap API) ---
+fastapi
+uvicorn[standard]
+
+# --- Session state ---
+redis[asyncio]
+
+# --- Data validation / settings ---
+pydantic>=2.0
+pydantic-settings
+
+# --- Utilities ---
+python-dotenv
+structlog
+
+# -----------------------------------------------------------------------
+# PROVIDER ADAPTERS — uncomment when provider is confirmed
+# -----------------------------------------------------------------------
+
+# STT
+# deepgram-sdk
+# openai-whisper         # or faster-whisper for local
+
+# LLM
+# anthropic
+# openai
+
+# TTS / Voice
+# elevenlabs
+# cartesia-ai
+
+# Memory store (persistent)
+# supabase               # if using Supabase for long-term memory
+# asyncpg                # if using Postgres directly
+# aiosqlite              # lighter option for early testing

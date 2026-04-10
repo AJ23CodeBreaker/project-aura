@@ -1,0 +1,19 @@
+# Project Aura — Netlify Configuration (placeholder)
+#
+# STUB: no build step yet — serving static files directly from /frontend.
+# Update the [build] section when a framework (Vite, etc.) is added in Phase 3.
+
+[build]
+  publish = "frontend"
+  # command = "npm run build"   # uncomment when a build step is added
+
+[[redirects]]
+  # Route all requests to index.html for SPA behaviour
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+[build.environment]
+  # Only non-secret, frontend-safe config goes here.
+  # Set VITE_API_BASE_URL (or equivalent) in the Netlify UI, not in this file.
+  # Never place LLM / TTS / memory store credentials here.

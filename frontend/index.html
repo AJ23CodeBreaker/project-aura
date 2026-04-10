@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Aura</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <header id="status-bar">
+      <span id="connection-status">Disconnected</span>
+    </header>
+
+    <main id="companion-view">
+      <!--
+        STUB: companion visual / avatar placeholder.
+        Replace with real visual in a later phase.
+      -->
+      <div id="companion-avatar">
+        <p class="stub-label">[ companion ]</p>
+      </div>
+
+      <div id="conversation-state">
+        <!-- States: idle | listening | thinking | speaking -->
+        <span id="state-label">idle</span>
+      </div>
+    </main>
+
+    <footer id="controls">
+      <button id="btn-start" onclick="startSession()">Start</button>
+      <button id="btn-end" onclick="endSession()" disabled>End</button>
+    </footer>
+
+    <!--
+      STUB: debug panel, hidden in production.
+      Shows raw session metadata during development.
+    -->
+    <aside id="debug-panel" style="display:none;">
+      <pre id="debug-output"></pre>
+    </aside>
+
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
