@@ -10,11 +10,16 @@ Usage:
 """
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _parse_origins(raw: str) -> List[str]:
+    """Parse a comma-separated CORS origins string into a list."""
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 @dataclass
@@ -57,6 +62,20 @@ class Settings:
     # --- Modal ---
     modal_token_id: Optional[str] = field(default_factory=lambda: os.getenv("MODAL_TOKEN_ID"))
     modal_token_secret: Optional[str] = field(default_factory=lambda: os.getenv("MODAL_TOKEN_SECRET"))
+
+    # --- CORS ---
+    # Comma-separated list of allowed origins for the session bootstrap API.
+    # Defaults to common local dev ports. Override in .env for production.
+    # Example: CORS_ORIGINS=https://your-app.netlify.app
+    cors_origins: List[str] = field(
+        default_factory=lambda: _parse_origins(
+            os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:5500,http://127.0.0.1:5500,"
+                "http://localhost:8080,http://127.0.0.1:8080",
+            )
+        )
+    )
 
 
 # Singleton — import this everywhere instead of re-constructing

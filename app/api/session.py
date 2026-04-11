@@ -16,11 +16,21 @@ STUB NOTE:
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.config.settings import settings
 from app.session.manager import SessionManager
 
 app = FastAPI(title="Project Aura — Session Bootstrap API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 _session_manager = SessionManager()
 
