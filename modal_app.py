@@ -47,3 +47,26 @@ modal_app = modal.App("project-aura-bootstrap")
 def web():
     """Serve the FastAPI session bootstrap API on Modal."""
     return fastapi_app
+
+
+@modal_app.function(
+    image=image,
+    # STUB: configure timeout and concurrency limits when wiring live sessions
+    # timeout=600,
+    # secrets=[modal.Secret.from_name("project-aura-secrets")],
+)
+async def run_orchestrator(session_id: str) -> dict:
+    """
+    STUB: Modal entry point for the companion session orchestrator.
+
+    Will call app.orchestrator.runner.run_session(session_id) once
+    DailyTransport and the pipeline are fully wired (Phase 3+).
+    Not yet deployed or tested.
+    """
+    # TODO Phase 3+:
+    # from app.orchestrator.runner import run_session
+    # return await run_session(session_id)
+    raise NotImplementedError(
+        "Orchestrator not yet wired. "
+        "Implement run_session() in app/orchestrator/runner.py (Phase 3+)."
+    )

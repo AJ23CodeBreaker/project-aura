@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.config.settings import settings
+
 from app.session.manager import SessionManager
 
 app = FastAPI(title="Project Aura — Session Bootstrap API")
@@ -48,9 +49,9 @@ class SessionCreateResponse(BaseModel):
     session_id: str
     status: str
     adult_mode: bool
-    # STUB: transport_url and transport_token added in Phase 3
-    # transport_url: str
-    # transport_token: str
+    transport_url: Optional[str] = None  # None until Daily.co transport is wired (Phase 3+)
+    # STUB: transport_token added when Daily.co is wired
+    # transport_token: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -71,6 +72,7 @@ async def create_session(request: SessionCreateRequest) -> SessionCreateResponse
         session_id=session.session_id,
         status=session.status.value,
         adult_mode=session.adult_mode,
+        transport_url=None,  # STUB: populated when DailyTransport is wired (Phase 3+)
     )
 
 
