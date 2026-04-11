@@ -43,8 +43,10 @@ from app.adapters.llm import DialogueAdapter, StubDialogueAdapter
 from app.adapters.stt import STTAdapter, StubSTTAdapter
 from app.core.logging import LatencyTimer
 from app.memory.engine import MemoryEngine
+from app.memory.writer import MemoryWriter
 from app.models.session import SessionModel
 from app.orchestrator.context import HISTORY_MAX_TURNS, build_dialogue_context
+from app.relationship.engine import RelationshipEngine
 from app.voice.renderer import LiveVoiceRenderer
 
 
@@ -100,6 +102,8 @@ class DialoguePipelineService(FrameProcessor):
         self._adapter: DialogueAdapter = adapter or StubDialogueAdapter()
         self._session: SessionModel = session or SessionModel()
         self._engine: MemoryEngine = engine or MemoryEngine()
+        self._writer = MemoryWriter(self._engine)
+        self._relationship_engine = RelationshipEngine(self._engine)
         # Minimal rolling history buffer — not a full transcript system
         self._history: List[dict] = []
 
@@ -128,6 +132,23 @@ class DialoguePipelineService(FrameProcessor):
             self._history.append({"role": "assistant", "text": "".join(assistant_chunks)})
             if len(self._history) > HISTORY_MAX_TURNS:
                 self._history = self._history[-HISTORY_MAX_TURNS:]
+
+            # Memory write and relationship signal — after response is fully generated.
+            # Non-blocking relative to already-pushed TTS frames; awaited here for
+            # correctness (writes must complete before session end triggers clean-up).
+            user_id = self._session.user_id
+            await self._writer.process_turn(
+                session_id=self._session.session_id,
+                user_id=user_id,
+                user_text=user_text,
+                assistant_text="".join(assistant_chunks),
+            )
+            if user_id and user_id != "anonymous":
+                await self._relationship_engine.apply_turn_signal(
+                    user_id=user_id,
+                    positive=True,  # Phase 4: every completed turn counts as positive
+                    conflict=False, # Phase 5 will detect conflict from dialogue signals
+                )
 
 
 class TTSPipelineService(FrameProcessor):

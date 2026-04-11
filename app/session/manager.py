@@ -1,18 +1,16 @@
 """
-Session Manager — STUB
+Session Manager
 
 Manages the lifecycle of a companion conversation session.
 
 Responsibilities:
-  - session creation and runtime state initialisation
-  - loading relationship state from persistent store (STUB)
-  - triggering memory write-back on session end (STUB)
-  - session teardown
+  - session creation with relationship-level loading (Phase 4)
+  - session state updates (activate, end)
+  - session-scoped memory clean-up on end
 
 STUB NOTE:
-  - Relationship state loading (Phase 4): hardcoded to Level 1 (New).
-  - Memory write-back (Phase 4): logged but not yet executed.
-  - Transport metadata (Phase 3): empty dict until Pipecat/WebRTC is wired.
+  - Transport metadata: empty dict until DailyTransport is wired (Phase 3+).
+  - Session duration tracking: not yet implemented.
 """
 import uuid
 from datetime import datetime
@@ -20,30 +18,42 @@ from typing import Optional
 
 from app.config.settings import settings
 from app.core.logging import log_session_end, log_session_start
+from app.memory.engine import MemoryEngine
 from app.models.session import SessionModel, SessionStatus
 from app.state.session_store import InMemorySessionStore, SessionStore
 
 
 class SessionManager:
 
-    def __init__(self, session_store: Optional[SessionStore] = None) -> None:
-        # STUB: defaults to in-memory store; swap with RedisSessionStore (Phase 2/3)
+    def __init__(
+        self,
+        session_store: Optional[SessionStore] = None,
+        memory_engine: Optional[MemoryEngine] = None,
+    ) -> None:
+        # STUB: defaults to in-memory store; swap with RedisSessionStore later
         self._store: SessionStore = session_store or InMemorySessionStore()
+        self._engine: MemoryEngine = memory_engine or MemoryEngine()
 
     async def create_session(self, user_id: Optional[str] = None) -> SessionModel:
         """
-        Create a new companion session and initialise runtime state.
+        Create a new companion session.
 
-        STUB: relationship_level is hardcoded to 1 (New) until the
-        relationship engine is wired in Phase 4.
+        Loads the user's current relationship level from persistent memory
+        if a user_id is provided. New or anonymous users start at level 1.
         """
+        relationship_level = 1
+        if user_id:
+            rel_mem = await self._engine.get_relationship_memory(user_id)
+            if rel_mem is not None:
+                relationship_level = rel_mem.closeness_level
+
         session = SessionModel(
             session_id=str(uuid.uuid4()),
             created_at=datetime.utcnow(),
             status=SessionStatus.INITIALIZING,
             user_id=user_id,
             adult_mode=settings.adult_mode_enabled,
-            relationship_level=1,  # STUB: load from RelationshipState in Phase 4
+            relationship_level=relationship_level,
         )
         await self._store.create(session)
         log_session_start(session.session_id, user_id)
@@ -58,12 +68,12 @@ class SessionManager:
 
     async def end_session(self, session_id: str) -> None:
         """
-        End a session and trigger post-session memory write-back.
+        End a session and clean up session-scoped memory.
 
-        STUB: memory summarisation and write-back are not yet implemented.
-        Logged as a reminder for Phase 4 implementation.
+        Relationship and user memory are already written turn-by-turn by
+        MemoryWriter, so no batch write-back is needed here.
+        Session memory is cleared from the in-process store.
         """
         await self._store.update_status(session_id, SessionStatus.ENDED)
-        # TODO Phase 4: generate session summary and write selective memories here
-        print(f"[STUB] Session {session_id} ended. Memory write-back not yet implemented.")
+        await self._engine.delete_session_memory(session_id)
         log_session_end(session_id, duration_seconds=0.0)  # STUB: duration not tracked yet

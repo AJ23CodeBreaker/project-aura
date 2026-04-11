@@ -6,3 +6,4 @@ __pycache__/
 .modalignore
 .vscode/
 .DS_Store
+data/memory/*.json

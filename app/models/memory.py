@@ -53,6 +53,7 @@ class RelationshipMemory:
     """
     user_id: str
     closeness_level: int = 1              # mirrors RelationshipState.closeness
+    positive_turn_count: int = 0          # running count toward next progression threshold
     affection_notes: List[str] = field(default_factory=list)
     intimacy_milestones: List[str] = field(default_factory=list)
     comfort_patterns: List[str] = field(default_factory=list)
