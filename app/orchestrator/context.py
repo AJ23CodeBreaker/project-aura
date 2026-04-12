@@ -32,7 +32,7 @@ from app.memory.engine import MemoryEngine
 from app.memory.retrieval import MemoryContext, build_context
 from app.models.session import SessionModel
 from app.orchestrator.identity import CompanionIdentity, DEFAULT_IDENTITY
-from app.orchestrator.scene import SessionController
+from app.orchestrator.scene import EscalationPace, SessionController
 
 # Maximum entries in the in-session history buffer.
 # 6 = 3 user turns + 3 assistant turns. Keeps context lean for low latency.
@@ -100,15 +100,26 @@ async def build_dialogue_context(
     Called once per turn, before the single LLM call.
 
     Layer 1: DEFAULT_IDENTITY — static, same for every session.
-    Layer 2: build_context() — currently returns empty stubs; Phase 4 wires real retrieval.
-    Layer 3: SessionController.from_session() — built from live session state.
+    Layer 2: build_context() — retrieves user facts, relationship summary, episodes.
+    Layer 3: SessionController — built from session state, then updated with
+             live emotional context and escalation pace from the memory layer.
     """
-    # Layer 2: memory retrieval (stub in Phase 3 — returns empty MemoryContext)
+    # Layer 2: memory retrieval
     user_id = session.user_id or "anonymous"
     memory = await build_context(engine, user_id, session.session_id)
 
     # Layer 3: session / scene controller
     scene = SessionController.from_session(session)
+
+    # Feed emotional context from memory into scene mood (Phase 5)
+    scene.current_mood = memory.emotional_context
+
+    # Set escalation pace when all adult gates are met (Phase 5)
+    if (
+        session.adult_mode
+        and scene.nsfw_eligible
+    ):
+        scene.escalation_pace = EscalationPace.INCREASE
 
     return DialogueContext(
         identity=DEFAULT_IDENTITY,

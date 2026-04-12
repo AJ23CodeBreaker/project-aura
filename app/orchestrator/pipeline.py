@@ -42,6 +42,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from app.adapters.llm import DialogueAdapter, StubDialogueAdapter
 from app.adapters.stt import STTAdapter, StubSTTAdapter
 from app.core.logging import LatencyTimer
+from app.dialogue.signals import classify_turn
 from app.memory.engine import MemoryEngine
 from app.memory.writer import MemoryWriter
 from app.models.session import SessionModel
@@ -144,11 +145,13 @@ class DialoguePipelineService(FrameProcessor):
                 assistant_text="".join(assistant_chunks),
             )
             if user_id and user_id != "anonymous":
-                await self._relationship_engine.apply_turn_signal(
-                    user_id=user_id,
-                    positive=True,  # Phase 4: every completed turn counts as positive
-                    conflict=False, # Phase 5 will detect conflict from dialogue signals
-                )
+                signal = classify_turn(user_text)
+                if signal.conflict or signal.positive:
+                    await self._relationship_engine.apply_turn_signal(
+                        user_id=user_id,
+                        positive=signal.positive,
+                        conflict=signal.conflict,
+                    )
 
 
 class TTSPipelineService(FrameProcessor):

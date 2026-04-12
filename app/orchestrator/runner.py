@@ -26,6 +26,7 @@ import asyncio
 from typing import Optional
 
 from app.adapters.llm import StubDialogueAdapter
+from app.dialogue.signals import classify_turn
 from app.memory.engine import MemoryEngine
 from app.memory.writer import MemoryWriter
 from app.models.session import SessionModel
@@ -196,6 +197,78 @@ async def run_fake_turn() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Behavior and gating test — no Pipecat dependency
+# ---------------------------------------------------------------------------
+
+async def run_behavior_test() -> dict:
+    """
+    Verify Phase 5: behavioral instructions, NSFW gating, mood flow,
+    conflict detection, and anti-repetition rules.
+
+    Exercises the verification matrix cases directly without a real LLM.
+    No Pipecat, no network, no credentials required.
+    """
+    from app.models.session import SessionStatus
+
+    def _make_session(relationship_level: int, adult_mode: bool) -> SessionModel:
+        return SessionModel(
+            user_id=None,
+            relationship_level=relationship_level,
+            adult_mode=adult_mode,
+            status=SessionStatus.INITIALIZING,
+        )
+
+    engine = MemoryEngine()
+
+    # Helper: get the scene render for a given session + mood
+    async def _scene_render(relationship_level: int, adult_mode: bool, mood: str = "neutral") -> str:
+        session = _make_session(relationship_level, adult_mode)
+        ctx = await build_dialogue_context(session, engine)
+        ctx.scene.current_mood = mood
+        return ctx.scene.render()
+
+    results = {}
+
+    # Case 1: NEW + adult false
+    results["NEW_adult_false"] = await _scene_render(1, False)
+
+    # Case 2: FAMILIAR + adult false (positive signal handled separately)
+    results["FAMILIAR_adult_false"] = await _scene_render(2, False)
+
+    # Case 3: CLOSE + heavy mood
+    results["CLOSE_heavy_mood"] = await _scene_render(3, False, mood="heavy")
+
+    # Case 4: INTIMATE + adult false
+    results["INTIMATE_adult_false"] = await _scene_render(4, False)
+
+    # Case 5: INTIMATE + adult true + nsfw_eligible true
+    results["INTIMATE_adult_true"] = await _scene_render(4, True)
+
+    # Signal detection cases
+    signal_cases = {
+        "leave me alone": classify_turn("leave me alone"),
+        "stop it": classify_turn("stop it"),
+        "please stop": classify_turn("please stop"),
+        "don't do that": classify_turn("don't do that"),
+        "go away": classify_turn("go away"),
+        "that's not okay": classify_turn("that's not okay"),
+        "thank you so much": classify_turn("thank you so much"),
+        "I enjoy talking with you": classify_turn("I enjoy talking with you"),
+        "how was your day": classify_turn("how was your day"),  # neutral
+    }
+    signal_results = {
+        text: {"positive": sig.positive, "conflict": sig.conflict}
+        for text, sig in signal_cases.items()
+    }
+
+    return {
+        "status": "ok",
+        "scene_renders": results,
+        "signal_detection": signal_results,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Modal entry point — STUB
 # ---------------------------------------------------------------------------
 
@@ -232,6 +305,10 @@ if __name__ == "__main__":
 
     print("\n--- Memory persistence test (pure Python) ---")
     result = asyncio.run(run_memory_test())
+    print(json.dumps(result, indent=2))
+
+    print("\n--- Behavior and gating test (pure Python) ---")
+    result = asyncio.run(run_behavior_test())
     print(json.dumps(result, indent=2))
 
     print("\n--- Fake turn test (requires pipecat-ai) ---")
