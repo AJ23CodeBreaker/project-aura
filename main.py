@@ -9,7 +9,10 @@ Or equivalently:
 """
 import uvicorn
 
+from app.core.logging import configure_logging
+
 if __name__ == "__main__":
+    configure_logging(dev_mode=True)
     uvicorn.run(
         "app.api.session:app",
         host="127.0.0.1",

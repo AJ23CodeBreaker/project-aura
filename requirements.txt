@@ -21,6 +21,11 @@ pydantic-settings
 python-dotenv
 structlog
 
+# Testing (Phase 6)
+pytest
+pytest-asyncio
+httpx
+
 # Provider adapters - uncomment when provider is confirmed
 
 # STT
@@ -29,7 +34,7 @@ structlog
 # faster-whisper
 
 # LLM
-# anthropic
+anthropic  # optional — required for AnthropicDialogueAdapter; install: pip install anthropic
 # openai
 
 # TTS / Voice
