@@ -36,8 +36,10 @@ let currentSessionId = null;
 // UI helpers
 // ---------------------------------------------------------------------------
 
-function setConnectionStatus(text) {
-  document.getElementById("connection-status").textContent = text;
+function setConnectionStatus(text, state) {
+  const el = document.getElementById("connection-status");
+  el.textContent = text;
+  el.className = state ? `status--${state}` : "";
 }
 
 function setStateLabel(text) {
@@ -115,7 +117,7 @@ async function sendTurn() {
     appendMessage("assistant", data.assistant_text);
     setStateLabel("idle");
   } catch (err) {
-    appendMessage("assistant", "[Error: could not get a reply]");
+    appendMessage("error", "[Error: could not get a reply]");
     setStateLabel("idle");
     console.error("Turn error:", err);
   } finally {
@@ -129,7 +131,7 @@ async function sendTurn() {
 // ---------------------------------------------------------------------------
 
 async function startSession() {
-  setConnectionStatus("Connecting…");
+  setConnectionStatus("Connecting…", "busy");
   setStateLabel("starting");
   document.getElementById("btn-start").disabled = true;
 
@@ -147,7 +149,7 @@ async function startSession() {
     const data = await response.json();
     currentSessionId = data.session_id;
 
-    setConnectionStatus("Connected");
+    setConnectionStatus("Connected", "connected");
     setStateLabel("idle");
     setSessionId(data.session_id);
     clearChat();
@@ -159,7 +161,7 @@ async function startSession() {
     setDebug(data);
 
   } catch (err) {
-    setConnectionStatus("Error");
+    setConnectionStatus("Error", "error");
     setStateLabel("failed");
     setSessionId(null);
     document.getElementById("btn-start").disabled = false;
@@ -171,7 +173,7 @@ async function startSession() {
 async function endSession() {
   if (!currentSessionId) return;
 
-  setConnectionStatus("Ending…");
+  setConnectionStatus("Ending…", "busy");
   setStateLabel("ending");
   document.getElementById("btn-end").disabled = true;
   setComposerEnabled(false);
@@ -189,6 +191,7 @@ async function endSession() {
   setStateLabel("idle");
   setSessionId(null);
   document.getElementById("btn-start").disabled = false;
+  document.getElementById("debug-panel").style.display = "none";
 }
 
 // ---------------------------------------------------------------------------
