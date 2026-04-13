@@ -12,7 +12,7 @@ body {
   color: #f0f0f0;
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 
@@ -44,6 +44,19 @@ body {
   letter-spacing: 0.04em;
   text-transform: none;
   font-family: monospace;
+}
+
+/* Connection status color modifiers */
+.status--connected {
+  color: #4a9e5c;
+}
+
+.status--busy {
+  color: #b8882a;
+}
+
+.status--error {
+  color: #b04040;
 }
 
 /* Companion avatar placeholder */
@@ -86,6 +99,7 @@ body {
 
 #chat-log {
   width: 100%;
+  min-height: 32px;
   max-height: 260px;
   overflow-y: auto;
   display: flex;
@@ -124,6 +138,14 @@ body {
   background: #16162a;
   color: #c8c8e8;
   border: 1px solid #22224a;
+}
+
+.msg-error {
+  align-self: flex-start;
+  background: #2a1616;
+  color: #c08080;
+  border: 1px solid #4a2222;
+  font-style: italic;
 }
 
 /* Composer */
