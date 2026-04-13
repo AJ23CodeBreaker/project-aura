@@ -17,14 +17,17 @@ EXAMPLE:
   from app.adapters.anthropic_llm import AnthropicDialogueAdapter
   from app.orchestrator.pipeline import build_pipeline
 
-  adapter = AnthropicDialogueAdapter()   # reads ANTHROPIC_API_KEY from env
+  adapter = AnthropicDialogueAdapter()   # reads .env / environment
   pipeline = build_pipeline(llm_adapter=adapter)
 
 REQUIREMENTS:
   - ANTHROPIC_API_KEY must be set in .env or environment.
+  - For APIYI native Anthropic SDK mode:
+      ANTHROPIC_BASE_URL=https://api.apiyi.com
   - anthropic Python package must be installed.
   - Does not change any pipeline, orchestrator, or context code.
 """
+
 import os
 from typing import AsyncIterator, Optional
 
@@ -37,8 +40,9 @@ class AnthropicDialogueAdapter:
     into build_pipeline() or any test runner without other code changes.
 
     Defaults:
-      model  — claude-sonnet-4-6 (fast, suitable for voice latency)
-      max_tokens — 200 (short spoken turns; override via LLM_MAX_TOKENS env)
+      model       — claude-sonnet-4-5-20250929
+      max_tokens  — 200 (short spoken turns; override via LLM_MAX_TOKENS env)
+      effort      — optional reasoning depth via LLM_EFFORT env
     """
 
     def __init__(
@@ -46,6 +50,8 @@ class AnthropicDialogueAdapter:
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        base_url: Optional[str] = None,
+        effort: Optional[str] = None,
     ) -> None:
         try:
             import anthropic as _anthropic
@@ -62,9 +68,16 @@ class AnthropicDialogueAdapter:
                 "Add it to .env or pass api_key= directly."
             )
 
-        self._model = model or os.getenv("LLM_MODEL", "claude-sonnet-4-6")
+        self._model = model or os.getenv("LLM_MODEL", "claude-sonnet-4-5-20250929")
         self._max_tokens = max_tokens or int(os.getenv("LLM_MAX_TOKENS", "200"))
-        self._client = _anthropic.AsyncAnthropic(api_key=key)
+        self._effort = effort or os.getenv("LLM_EFFORT")
+        resolved_base_url = base_url or os.getenv("ANTHROPIC_BASE_URL")
+
+        client_kwargs = {"api_key": key}
+        if resolved_base_url:
+            client_kwargs["base_url"] = resolved_base_url
+
+        self._client = _anthropic.AsyncAnthropic(**client_kwargs)
 
     async def generate(
         self,
@@ -75,8 +88,10 @@ class AnthropicDialogueAdapter:
         """
         Stream a companion response from the Anthropic API.
 
-        Converts the internal history format ({"role": ..., "text": ...})
-        to the Anthropic format ({"role": ..., "content": ...}).
+        Converts the internal history format:
+          {"role": "...", "text": "..."}
+        to the Anthropic format:
+          {"role": "...", "content": "..."}
         """
         messages = [
             {"role": msg["role"], "content": msg["text"]}
@@ -84,12 +99,18 @@ class AnthropicDialogueAdapter:
         ]
         messages.append({"role": "user", "content": user_message})
 
-        async with self._client.messages.stream(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=system_prompt,
-            messages=messages,
-        ) as stream:
+        stream_kwargs = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+        }
+
+        # Optional: reasoning depth control if your provider/model supports it
+        if self._effort:
+            stream_kwargs["output_config"] = {"effort": self._effort}
+
+        async with self._client.messages.stream(**stream_kwargs) as stream:
             async for text in stream.text_stream:
                 yield text
 

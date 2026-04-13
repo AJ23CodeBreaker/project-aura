@@ -39,6 +39,7 @@ from pipecat.frames.frames import (
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from app.adapters.factory import get_llm_adapter
 from app.adapters.llm import DialogueAdapter, StubDialogueAdapter
 from app.adapters.stt import STTAdapter, StubSTTAdapter
 from app.core.logging import LatencyTimer
@@ -203,7 +204,7 @@ def build_pipeline(
     """
     stt = STTPipelineService(adapter=stt_adapter)
     dialogue = DialoguePipelineService(
-        adapter=llm_adapter,
+        adapter=llm_adapter or get_llm_adapter(),
         session=session,
         engine=engine,
     )

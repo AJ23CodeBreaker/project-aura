@@ -93,11 +93,13 @@ class RelationshipEngine:
         old_level = rel_mem.closeness_level
 
         if conflict:
-            # Regression: drop one level
+            # Regression: drop one level and always reset accumulated progress.
+            # Count resets even when already at the floor (level 1), so conflict
+            # has a meaningful effect regardless of current closeness.
             new_level = max(1, rel_mem.closeness_level - 1)
+            rel_mem.positive_turn_count = 0
             if new_level != old_level:
                 rel_mem.closeness_level = new_level
-                rel_mem.positive_turn_count = 0  # reset progress on regression
                 log_relationship_change(user_id, old_level, new_level)
 
         elif positive:

@@ -14,6 +14,11 @@ import asyncio
 import os
 import sys
 
+from dotenv import load_dotenv
+
+# Load variables from .env before reading os.getenv(...)
+load_dotenv()
+
 # Allow running from the project root without installing the package.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -122,11 +127,9 @@ def evaluate_scene() -> None:
         rendered = scene.render()
 
         if level == 4 and adult:
-            # Gate should PASS
             _check(label, "Adult content: enabled" in rendered, rendered[:80])
-            _check(f"  > 'unprompted' guard present", "unprompted" in rendered)
+            _check("  > 'unprompted' guard present", "unprompted" in rendered)
         else:
-            # Gate should FAIL
             _check(label, "not permitted" in rendered, rendered[:80])
 
         if mood == "heavy":
@@ -156,11 +159,17 @@ async def evaluate_context() -> None:
 
     session_i = SessionModel(relationship_level=4, adult_mode=True)
     ctx_i = await build_dialogue_context(session_i, engine)
-    _check("Escalation INCREASE at INTIMATE + adult", ctx_i.scene.escalation_pace == EscalationPace.INCREASE)
+    _check(
+        "Escalation INCREASE at INTIMATE + adult",
+        ctx_i.scene.escalation_pace == EscalationPace.INCREASE,
+    )
 
     session_n = SessionModel(relationship_level=1, adult_mode=True)
     ctx_n = await build_dialogue_context(session_n, engine)
-    _check("Escalation HOLD at NEW (even with adult=True)", ctx_n.scene.escalation_pace == EscalationPace.HOLD)
+    _check(
+        "Escalation HOLD at NEW (even with adult=True)",
+        ctx_n.scene.escalation_pace == EscalationPace.HOLD,
+    )
 
     prompt = ctx_i.to_system_prompt()
     _check("System prompt is non-empty", len(prompt) > 200)
@@ -182,15 +191,18 @@ async def evaluate_memory() -> None:
 
     from app.memory.writer import MemoryWriter
     from app.relationship.engine import RelationshipEngine
-
     import uuid
+
     user_id = f"eval-memory-{uuid.uuid4().hex[:8]}"
     writer = MemoryWriter(engine)
     rel_engine = RelationshipEngine(engine)
 
     ctx_before = await build_dialogue_context(SessionModel(user_id=user_id), engine)
     _check("New user: no prior facts", ctx_before.memory.user_facts == {})
-    _check('New user: relationship says "First session"', "First session" in ctx_before.memory.relationship_summary)
+    _check(
+        'New user: relationship says "First session"',
+        "First session" in ctx_before.memory.relationship_summary,
+    )
 
     await writer.process_turn(
         session_id="eval-sess",
@@ -201,8 +213,14 @@ async def evaluate_memory() -> None:
     await rel_engine.apply_turn_signal(user_id=user_id, positive=True)
 
     ctx_after = await build_dialogue_context(SessionModel(user_id=user_id), engine)
-    _check("After turn: personal fact stored (name=Sam)", ctx_after.memory.user_facts.get("name") == "Sam")
-    _check("After turn: relationship summary updated", "First session" not in ctx_after.memory.relationship_summary)
+    _check(
+        "After turn: personal fact stored (name=Sam)",
+        ctx_after.memory.user_facts.get("name") == "Sam",
+    )
+    _check(
+        "After turn: relationship summary updated",
+        "First session" not in ctx_after.memory.relationship_summary,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +270,11 @@ async def evaluate_real_llm() -> None:
 
         response = "".join(chunks).strip()
         _check("Real LLM: response is non-empty", len(response) > 0)
-        _check("Real LLM: response under 400 chars (spoken length)", len(response) < 400, f"len={len(response)}")
+        _check(
+            "Real LLM: response under 400 chars (spoken length)",
+            len(response) < 400,
+            f"len={len(response)}",
+        )
         print(f"\n  Response: {response!r}\n")
 
     except Exception as exc:

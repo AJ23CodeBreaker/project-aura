@@ -73,3 +73,53 @@ class TestEndSession:
     async def test_end_nonexistent_session_returns_404(self, api_client):
         resp = await api_client.post("/session/does-not-exist/end")
         assert resp.status_code == 404
+
+
+class TestTurnEndpoint:
+    async def test_turn_returns_200(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn",
+            json={"user_text": "Hello, are you there?"},
+        )
+        assert resp.status_code == 200
+
+    async def test_turn_returns_assistant_text(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn",
+            json={"user_text": "Hello"},
+        )
+        body = resp.json()
+        assert "assistant_text" in body
+        assert len(body["assistant_text"]) > 0
+
+    async def test_turn_returns_session_id(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn",
+            json={"user_text": "Hello"},
+        )
+        assert resp.json()["session_id"] == session_id
+
+    async def test_turn_nonexistent_session_returns_404(self, api_client):
+        resp = await api_client.post(
+            "/session/does-not-exist/turn",
+            json={"user_text": "Hello"},
+        )
+        assert resp.status_code == 404
+
+    async def test_multiple_turns_same_session(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+
+        for msg in ["Hello", "How are you?", "Tell me something"]:
+            resp = await api_client.post(
+                f"/session/{session_id}/turn",
+                json={"user_text": msg},
+            )
+            assert resp.status_code == 200
+            assert len(resp.json()["assistant_text"]) > 0
