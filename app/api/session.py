@@ -23,6 +23,7 @@ from app.adapters.factory import get_llm_adapter
 from app.config.settings import settings
 from app.memory.engine import MemoryEngine
 from app.orchestrator.dialogue_runner import clear_session_history, run_text_turn
+from app.models.session import SessionStatus
 from app.session.manager import SessionManager
 
 app = FastAPI(title="Project Aura — Session Bootstrap API")
@@ -103,6 +104,8 @@ async def turn(session_id: str, request: TurnRequest) -> TurnResponse:
     session = await _session_manager.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
+    if session.status == SessionStatus.ENDED:
+        raise HTTPException(status_code=404, detail="Session has ended.")
     assistant_text = await run_text_turn(
         session=session,
         user_text=request.user_text,

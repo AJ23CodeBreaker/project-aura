@@ -112,6 +112,21 @@ class TestTurnEndpoint:
         )
         assert resp.status_code == 404
 
+    async def test_turn_on_ended_session_returns_404(self, api_client):
+        # Regression test: ended sessions must not accept further turns.
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+
+        # End the session
+        await api_client.post(f"/session/{session_id}/end")
+
+        # Subsequent turn must be rejected
+        resp = await api_client.post(
+            f"/session/{session_id}/turn",
+            json={"user_text": "Hello after end"},
+        )
+        assert resp.status_code == 404
+
     async def test_multiple_turns_same_session(self, api_client):
         create_resp = await api_client.post("/session/create", json={})
         session_id = create_resp.json()["session_id"]

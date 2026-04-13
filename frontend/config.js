@@ -10,4 +10,7 @@
  */
 window.AURA_CONFIG = {
   apiBaseUrl: "http://localhost:8000",
+  // TEST ONLY: set to a fixed string (e.g. "demo-user-001") to persist memory
+  // and relationship state across sessions. Leave null for anonymous sessions.
+  testUserId: null,
 };

@@ -75,6 +75,21 @@ function clearChat() {
   document.getElementById("chat-log").innerHTML = "";
 }
 
+function showTypingIndicator() {
+  const log = document.getElementById("chat-log");
+  const el = document.createElement("div");
+  el.id = "typing-indicator";
+  el.className = "msg msg-typing";
+  el.innerHTML = "<span>•</span><span>•</span><span>•</span>";
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById("typing-indicator");
+  if (el) el.remove();
+}
+
 function setComposerEnabled(enabled) {
   document.getElementById("btn-send").disabled = !enabled;
   document.getElementById("message-input").disabled = !enabled;
@@ -96,6 +111,7 @@ async function sendTurn() {
 
   input.value = "";
   appendMessage("user", userText);
+  showTypingIndicator();
   setComposerEnabled(false);
   setStateLabel("thinking");
 
@@ -110,17 +126,28 @@ async function sendTurn() {
     );
 
     if (!response.ok) {
-      throw new Error(`Turn failed: ${response.status}`);
+      const err = new Error(`Turn failed: ${response.status}`);
+      err.status = response.status;
+      throw err;
     }
 
     const data = await response.json();
     appendMessage("assistant", data.assistant_text);
     setStateLabel("idle");
   } catch (err) {
-    appendMessage("error", "[Error: could not get a reply]");
+    let message;
+    if (err.status === 404) {
+      message = "[Session expired — please start a new session]";
+    } else if (err.status >= 500) {
+      message = "[Server error — try sending again]";
+    } else {
+      message = "[Could not reach the server — is the backend running?]";
+    }
+    appendMessage("error", message);
     setStateLabel("idle");
     console.error("Turn error:", err);
   } finally {
+    removeTypingIndicator();
     setComposerEnabled(true);
     input.focus();
   }
@@ -139,7 +166,9 @@ async function startSession() {
     const response = await fetch(`${API_BASE_URL}/session/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: null }), // STUB: no auth yet
+      body: JSON.stringify({
+        user_id: (window.AURA_CONFIG && window.AURA_CONFIG.testUserId) || null,
+      }),
     });
 
     if (!response.ok) {
