@@ -29,6 +29,20 @@
       </div>
     </main>
 
+    <section id="chat-section">
+      <div id="chat-log"></div>
+      <form id="composer" onsubmit="handleComposerSubmit(event)">
+        <input
+          id="message-input"
+          type="text"
+          placeholder="Type a message…"
+          autocomplete="off"
+          disabled
+        />
+        <button id="btn-send" type="submit" disabled>Send</button>
+      </form>
+    </section>
+
     <footer id="controls">
       <button id="btn-start" onclick="startSession()">Start</button>
       <button id="btn-end" onclick="endSession()" disabled>End</button>

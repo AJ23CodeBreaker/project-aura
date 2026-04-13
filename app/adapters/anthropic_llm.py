@@ -10,7 +10,7 @@ USAGE:
   to build_pipeline() or the runner test functions.
 
 INSTALLATION:
-  pip install anthropic
+  pip install anthropic python-dotenv
 
 EXAMPLE:
   import os
@@ -30,6 +30,34 @@ REQUIREMENTS:
 
 import os
 from typing import AsyncIterator, Optional
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):  # type: ignore
+        return False
+
+
+def _clean_text(text: str, *, strip: bool = True) -> str:
+    if not text:
+        return ""
+
+    replacements = {
+        "â€”": "—",
+        "â€“": "–",
+        "â€˜": "‘",
+        "â€™": "’",
+        "â€œ": "“",
+        "â€\x9d": "”",
+        "â€¦": "…",
+        "Ã©": "é",
+        "Ã ": "à",
+    }
+
+    for bad, good in replacements.items():
+        text = text.replace(bad, good)
+
+    return text.strip() if strip else text
 
 
 class AnthropicDialogueAdapter:
@@ -53,6 +81,9 @@ class AnthropicDialogueAdapter:
         base_url: Optional[str] = None,
         effort: Optional[str] = None,
     ) -> None:
+        # Load .env automatically when present
+        load_dotenv()
+
         try:
             import anthropic as _anthropic
         except ImportError as exc:
@@ -112,7 +143,9 @@ class AnthropicDialogueAdapter:
 
         async with self._client.messages.stream(**stream_kwargs) as stream:
             async for text in stream.text_stream:
-                yield text
+                cleaned = _clean_text(text, strip=False)
+                if cleaned:
+                    yield cleaned
 
     async def close(self) -> None:
         await self._client.close()

@@ -57,6 +57,74 @@ function setDebug(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Chat helpers
+// ---------------------------------------------------------------------------
+
+function appendMessage(role, text) {
+  const log = document.getElementById("chat-log");
+  const el = document.createElement("div");
+  el.className = `msg msg-${role}`;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearChat() {
+  document.getElementById("chat-log").innerHTML = "";
+}
+
+function setComposerEnabled(enabled) {
+  document.getElementById("btn-send").disabled = !enabled;
+  document.getElementById("message-input").disabled = !enabled;
+}
+
+// ---------------------------------------------------------------------------
+// Turn
+// ---------------------------------------------------------------------------
+
+function handleComposerSubmit(event) {
+  event.preventDefault();
+  sendTurn();
+}
+
+async function sendTurn() {
+  const input = document.getElementById("message-input");
+  const userText = input.value.trim();
+  if (!userText || !currentSessionId) return;
+
+  input.value = "";
+  appendMessage("user", userText);
+  setComposerEnabled(false);
+  setStateLabel("thinking");
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/session/${currentSessionId}/turn`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_text: userText }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Turn failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    appendMessage("assistant", data.assistant_text);
+    setStateLabel("idle");
+  } catch (err) {
+    appendMessage("assistant", "[Error: could not get a reply]");
+    setStateLabel("idle");
+    console.error("Turn error:", err);
+  } finally {
+    setComposerEnabled(true);
+    input.focus();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session lifecycle
 // ---------------------------------------------------------------------------
 
@@ -82,6 +150,9 @@ async function startSession() {
     setConnectionStatus("Connected");
     setStateLabel("idle");
     setSessionId(data.session_id);
+    clearChat();
+    setComposerEnabled(true);
+    document.getElementById("message-input").focus();
     document.getElementById("btn-end").disabled = false;
 
     // STUB: initialise real-time transport here in Phase 3
@@ -103,6 +174,7 @@ async function endSession() {
   setConnectionStatus("Ending…");
   setStateLabel("ending");
   document.getElementById("btn-end").disabled = true;
+  setComposerEnabled(false);
 
   try {
     await fetch(`${API_BASE_URL}/session/${currentSessionId}/end`, {
