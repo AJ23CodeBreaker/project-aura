@@ -138,3 +138,74 @@ class TestTurnEndpoint:
             )
             assert resp.status_code == 200
             assert len(resp.json()["assistant_text"]) > 0
+
+
+class TestTurnStreamEndpoint:
+    async def test_stream_returns_200(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        assert resp.status_code == 200
+
+    async def test_stream_content_type_is_event_stream(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        assert "text/event-stream" in resp.headers["content-type"]
+
+    async def test_stream_contains_data_lines(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        data_lines = [
+            l for l in resp.text.split("\n") if l.startswith("data: ")
+        ]
+        assert len(data_lines) > 0
+
+    async def test_stream_ends_with_done(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        assert "data: [DONE]" in resp.text
+
+    async def test_stream_assembled_text_is_nonempty(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        resp = await api_client.post(
+            f"/session/{session_id}/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        tokens = [
+            l[6:] for l in resp.text.split("\n")
+            if l.startswith("data: ") and l != "data: [DONE]"
+        ]
+        assert len("".join(tokens)) > 0
+
+    async def test_stream_nonexistent_session_returns_404(self, api_client):
+        resp = await api_client.post(
+            "/session/does-not-exist/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        assert resp.status_code == 404
+
+    async def test_stream_ended_session_returns_404(self, api_client):
+        create_resp = await api_client.post("/session/create", json={})
+        session_id = create_resp.json()["session_id"]
+        await api_client.post(f"/session/{session_id}/end")
+        resp = await api_client.post(
+            f"/session/{session_id}/turn/stream",
+            json={"user_text": "Hello"},
+        )
+        assert resp.status_code == 404

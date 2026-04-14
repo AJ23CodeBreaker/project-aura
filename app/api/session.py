@@ -17,12 +17,13 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.adapters.factory import get_llm_adapter
 from app.config.settings import settings
 from app.memory.engine import MemoryEngine
-from app.orchestrator.dialogue_runner import clear_session_history, run_text_turn
+from app.orchestrator.dialogue_runner import clear_session_history, run_text_turn, stream_text_turn
 from app.models.session import SessionStatus
 from app.session.manager import SessionManager
 
@@ -113,6 +114,48 @@ async def turn(session_id: str, request: TurnRequest) -> TurnResponse:
         adapter=_llm_adapter,
     )
     return TurnResponse(session_id=session_id, assistant_text=assistant_text)
+
+
+@app.post("/session/{session_id}/turn/stream")
+async def turn_stream(session_id: str, request: TurnRequest) -> StreamingResponse:
+    """
+    Execute one text dialogue turn, returning the response as an SSE stream.
+
+    Each token is emitted as:  data: <chunk>\\n\\n
+    The stream ends with:       data: [DONE]\\n\\n
+
+    Memory writes and relationship signals are applied only if the stream
+    completes fully. An abandoned connection (client disconnect) leaves no
+    partial state in memory.
+    """
+    session = await _session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if session.status == SessionStatus.ENDED:
+        raise HTTPException(status_code=404, detail="Session has ended.")
+
+    async def event_generator():
+        async for chunk in stream_text_turn(
+            session=session,
+            user_text=request.user_text,
+            engine=_engine,
+            adapter=_llm_adapter,
+        ):
+            # Sanitise newlines so each chunk stays on a single SSE data line.
+            safe = chunk.replace("\r", " ").replace("\n", " ")
+            yield f"data: {safe}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Disable proxy/nginx buffering so chunks flush immediately.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/session/{session_id}/end")

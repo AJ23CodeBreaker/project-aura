@@ -71,6 +71,17 @@ function appendMessage(role, text) {
   log.scrollTop = log.scrollHeight;
 }
 
+function createMessageBubble(role) {
+  // Creates an empty message bubble and returns the element so the caller
+  // can append streaming tokens to it incrementally.
+  const log = document.getElementById("chat-log");
+  const el = document.createElement("div");
+  el.className = `msg msg-${role}`;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
 function clearChat() {
   document.getElementById("chat-log").innerHTML = "";
 }
@@ -115,9 +126,11 @@ async function sendTurn() {
   setComposerEnabled(false);
   setStateLabel("thinking");
 
+  let assistantBubble = null;
+
   try {
     const response = await fetch(
-      `${API_BASE_URL}/session/${currentSessionId}/turn`,
+      `${API_BASE_URL}/session/${currentSessionId}/turn/stream`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,8 +144,39 @@ async function sendTurn() {
       throw err;
     }
 
-    const data = await response.json();
-    appendMessage("assistant", data.assistant_text);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    // Buffer accumulates bytes across ReadableStream chunks so we never
+    // process a line that was split across two stream deliveries.
+    let buffer = "";
+
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split on newline. The last element may be an incomplete line —
+      // pop it back into the buffer and process the rest.
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6); // length of "data: "
+        if (data === "[DONE]") break outer;
+
+        // First token: swap typing indicator for the live assistant bubble.
+        if (!assistantBubble) {
+          removeTypingIndicator();
+          assistantBubble = createMessageBubble("assistant");
+        }
+        assistantBubble.textContent += data;
+        document.getElementById("chat-log").scrollTop =
+          document.getElementById("chat-log").scrollHeight;
+      }
+    }
+
     setStateLabel("idle");
   } catch (err) {
     let message;
@@ -147,6 +191,7 @@ async function sendTurn() {
     setStateLabel("idle");
     console.error("Turn error:", err);
   } finally {
+    // Safety: remove typing indicator if the first token never arrived.
     removeTypingIndicator();
     setComposerEnabled(true);
     input.focus();
