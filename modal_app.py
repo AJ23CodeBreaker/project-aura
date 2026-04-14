@@ -1,72 +1,68 @@
 """
-modal_app.py — Modal deployment stub
+Project Aura — Modal deployment.
 
-STUB: wraps the FastAPI session bootstrap API as a Modal ASGI web endpoint.
+Serves the FastAPI session bootstrap API as a Modal ASGI web endpoint.
 
-This file is NOT yet deployed or tested against a live Modal account.
-Review against current Modal documentation before running `modal deploy`.
+Volumes:
+  aura-data   — mounted at /data; memory JSON files survive restarts and redeploys.
 
-Prerequisites (run once per machine):
-    pip install modal
-    modal token new
+Secrets:
+  aura-secrets — Modal Secret containing at minimum ANTHROPIC_API_KEY.
+                 Optionally add CORS_ORIGINS to include your Netlify URL.
 
-Add backend secrets to Modal before deploying:
-    modal secret create project-aura-secrets \
-        SESSION_SECRET_KEY=<your-value> \
-        ADULT_MODE_ENABLED=false
+Data path:
+  DATA_DIR is set to /data/memory inside the container so the memory store
+  writes to the Modal Volume rather than the (ephemeral) container filesystem.
 
-    # Add provider keys once selected (Phase 3+):
-    # STT_API_KEY, LLM_API_KEY, TTS_API_KEY, REDIS_URL, etc.
+Local dev workflow (unchanged):
+  uvicorn app.api.session:app --reload
 
-Deploy:
-    modal deploy modal_app.py
+Modal workflow:
+  # One-time setup (run once per environment):
+  modal secret create aura-secrets ANTHROPIC_API_KEY=<your-key>
 
-See scripts/deploy_modal.ps1 (Windows) or scripts/deploy_modal.sh (bash)
-for the full step-by-step commands.
+  # Dev tunnel — live reload, temporary public URL:
+  modal serve modal_app.py
+
+  # Permanent deploy:
+  modal deploy modal_app.py
+
+After deploying, copy the printed web endpoint URL into frontend/config.js.
 """
+
 import modal
 
-from app.api.session import app as fastapi_app
+app = modal.App("project-aura")
 
-# STUB: image definition.
-# Pin additional system packages here if any provider SDKs require them.
+# Persistent volume — memory JSON files survive container restarts and redeploys.
+data_volume = modal.Volume.from_name("aura-data", create_if_missing=True)
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install_from_requirements("requirements.txt")
+    .add_local_python_source("app")
 )
 
-modal_app = modal.App("project-aura-bootstrap")
-
-
-@modal_app.function(
+@app.function(
     image=image,
-    # STUB: mount Modal secrets here before deploying, e.g.:
-    # secrets=[modal.Secret.from_name("project-aura-secrets")],
+    volumes={"/data": data_volume},
+    secrets=[modal.Secret.from_name("aura-secrets")],
+    # Modal 1.x: keep_warm was renamed to min_containers
+    min_containers=1,
 )
 @modal.asgi_app()
-def web():
-    """Serve the FastAPI session bootstrap API on Modal."""
+def serve() -> object:
+    """
+    Return the FastAPI app after pointing DATA_DIR at the mounted Volume.
+
+    DATA_DIR must be set before app.api.session is imported so the settings
+    singleton picks up the correct path at startup.
+    """
+    import os
+
+    os.environ.setdefault("DATA_DIR", "/data/memory")
+
+    # Imported here (not at module level) so DATA_DIR is set first.
+    from app.api.session import app as fastapi_app  # noqa: PLC0415
+
     return fastapi_app
-
-
-@modal_app.function(
-    image=image,
-    # STUB: configure timeout and concurrency limits when wiring live sessions
-    # timeout=600,
-    # secrets=[modal.Secret.from_name("project-aura-secrets")],
-)
-async def run_orchestrator(session_id: str) -> dict:
-    """
-    STUB: Modal entry point for the companion session orchestrator.
-
-    Will call app.orchestrator.runner.run_session(session_id) once
-    DailyTransport and the pipeline are fully wired (Phase 3+).
-    Not yet deployed or tested.
-    """
-    # TODO Phase 3+:
-    # from app.orchestrator.runner import run_session
-    # return await run_session(session_id)
-    raise NotImplementedError(
-        "Orchestrator not yet wired. "
-        "Implement run_session() in app/orchestrator/runner.py (Phase 3+)."
-    )

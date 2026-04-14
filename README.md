@@ -6,7 +6,7 @@ The objective is not to build a generic chatbot.
 The objective is to build a prototype that feels emotionally believable,
 remembers shared history, and supports gradual intimacy progression over time.
 
-> **Status: Phase 1 complete — repository skeleton and configuration foundation.**
+> **Status: Phase 9 complete — Modal deployment wired; text chat prototype fully working locally and deployable.**
 
 ---
 
@@ -108,6 +108,30 @@ uvicorn app.api.session:app --reload
 The frontend can be served directly from the `frontend/` directory
 (any static file server, or Netlify CLI).
 
+## Modal deployment
+
+```bash
+# One-time: create the Modal Secret with your Anthropic key
+modal secret create aura-secrets ANTHROPIC_API_KEY=<your-key>
+
+# Dev tunnel (live reload, temporary URL printed to terminal)
+modal serve modal_app.py
+
+# Permanent deploy (stable URL printed to terminal)
+modal deploy modal_app.py
+```
+
+After deploying, update `frontend/config.js`:
+```js
+window.AURA_CONFIG = {
+  apiBaseUrl: "https://<your-modal-endpoint>.modal.run",
+  testUserId: null,
+};
+```
+
+Add your Netlify URL to `CORS_ORIGINS` in the Modal Secret if the frontend
+is hosted on Netlify (e.g. `CORS_ORIGINS=https://your-app.netlify.app`).
+
 ---
 
 ## Phase status
@@ -115,11 +139,14 @@ The frontend can be served directly from the `frontend/` directory
 | Phase | Description | Status |
 |---|---|---|
 | Phase 1 | Repository skeleton and configuration foundation | **Complete** |
-| Phase 2 | Frontend and backend baseline wiring | Not started |
-| Phase 3 | Real-time voice pipeline skeleton (Pipecat + WebRTC) | Not started |
-| Phase 4 | Memory and relationship-state implementation | Not started |
-| Phase 5 | Companion behaviour and intimacy progression | Not started |
-| Phase 6 | Testing, tuning, and prototype hardening | Not started |
+| Phase 2 | Frontend and backend baseline wiring | **Complete** |
+| Phase 3 | Real-time voice pipeline skeleton (Pipecat + WebRTC) | **Complete** |
+| Phase 4 | Memory and relationship-state implementation | **Complete** |
+| Phase 5 | Companion behaviour and intimacy progression | **Complete** |
+| Phase 6 | Testing, tuning, and prototype hardening | **Complete** |
+| Phase 7A | AnthropicDialogueAdapter + text turn API | **Complete** |
+| Phase 7B / Phase 8 | Frontend chat UX + conversation quality | **Complete** |
+| Phase 9 | Modal deployment | **Complete** |
 
 ---
 

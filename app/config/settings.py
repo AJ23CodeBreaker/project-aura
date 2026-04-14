@@ -10,6 +10,7 @@ Usage:
 """
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -57,6 +58,16 @@ class Settings:
     # Only approved private testers should run sessions with adult_mode=True.
     adult_mode_enabled: bool = field(
         default_factory=lambda: os.getenv("ADULT_MODE_ENABLED", "false").lower() == "true"
+    )
+
+    # --- Data directory ---
+    # Local default: data/memory/ relative to project root.
+    # Modal deployment: set DATA_DIR=/data/memory (the Modal Volume mount path).
+    data_dir: str = field(
+        default_factory=lambda: os.getenv(
+            "DATA_DIR",
+            str(Path(__file__).parent.parent.parent / "data" / "memory"),
+        )
     )
 
     # --- Modal ---

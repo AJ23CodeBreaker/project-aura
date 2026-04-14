@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from app.config.settings import settings
 from app.models.memory import (
     EpisodicMemory,
     RelationshipMemory,
@@ -24,8 +25,10 @@ from app.models.memory import (
     UserSemanticMemory,
 )
 
-# Location of JSON files relative to the project root.
-_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "memory"
+# Location of JSON files — driven by DATA_DIR env var (see settings).
+# Local default: data/memory/ relative to project root.
+# Modal deployment: /data/memory (Modal Volume mount).
+_DATA_DIR = Path(settings.data_dir)
 
 
 def _ensure_dir() -> None:
