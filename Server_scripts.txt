@@ -1,0 +1,12 @@
+Modal Service Endpoint
+https://airjacky--project-aura-serve.modal.run
+
+Server side: 
+modal deploy modal_app.py
+
+Http server:
+python -m http.server 5500 --directory frontend    
+
+virtual env for Python 3.11
+.\.venv\Scripts\Activate.ps1         
+
