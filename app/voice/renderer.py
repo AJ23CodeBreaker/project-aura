@@ -1,5 +1,5 @@
 """
-Live Voice Renderer — STUB
+Live Voice Renderer
 
 The single canonical live voice rendering path for Project Aura v1.
 
@@ -11,8 +11,10 @@ ARCHITECTURE RULE (per ARCHITECTURE.md §10.3):
 The renderer wraps the TTS adapter and is the only place in the codebase
 that converts dialogue text to audio. The orchestrator calls this.
 
-STUB NOTE: Uses StubTTSAdapter until a real provider is wired in Phase 3.
-Actress voice identity is preserved through the TTS adapter's voice_id / model.
+Phase 12A: FishAudioTTSAdapter is injected by build_voice_pipeline().
+  emotional_hint is propagated from SessionController.current_mood through
+  TTSPipelineService → LiveVoiceRenderer.render() → TTSAdapter.synthesize_stream().
+  Actress voice identity is preserved through the adapter's voice_id / reference_id.
 """
 from typing import AsyncIterator, Optional
 
@@ -23,12 +25,11 @@ class LiveVoiceRenderer:
     """
     Canonical live voice renderer.
 
-    Instantiate with a real TTSAdapter in Phase 3. Until then, the stub
-    adapter allows the pipeline skeleton to run without a provider.
+    Defaults to StubTTSAdapter when no real provider is injected.
+    Inject FishAudioTTSAdapter (or any TTSAdapter) via the constructor.
     """
 
     def __init__(self, tts_adapter: Optional[TTSAdapter] = None) -> None:
-        # STUB: defaults to StubTTSAdapter until a real provider is injected
         self._adapter: TTSAdapter = tts_adapter or StubTTSAdapter()
 
     async def render(

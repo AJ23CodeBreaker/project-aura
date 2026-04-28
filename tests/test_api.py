@@ -40,10 +40,23 @@ class TestCreateSession:
         body = resp.json()
         assert body["adult_mode"] is False
 
-    async def test_create_session_transport_url_is_none(self, api_client):
+    async def test_create_session_transport_url_is_none_for_standard_session(self, api_client):
+        # Standard (non-demo) sessions always return transport_url=None.
         resp = await api_client.post("/session/create", json={})
         body = resp.json()
         assert body.get("transport_url") is None
+
+    async def test_create_demo_session_transport_url_is_none_without_daily_key(
+        self, api_client, monkeypatch
+    ):
+        # Demo sessions without DAILY_API_KEY gracefully return transport_url=None.
+        import app.api.session as s
+        monkeypatch.setattr(s.settings, "demo_token", "secret")
+        monkeypatch.setattr(s.settings, "daily_api_key", None)
+        resp = await api_client.post("/session/create", json={"demo_token": "secret"})
+        assert resp.status_code == 200
+        assert resp.json()["adult_mode"] is True
+        assert resp.json().get("transport_url") is None
 
     async def test_create_session_with_null_user_id(self, api_client):
         resp = await api_client.post("/session/create", json={"user_id": None})
@@ -209,3 +222,124 @@ class TestTurnStreamEndpoint:
             json={"user_text": "Hello"},
         )
         assert resp.status_code == 404
+
+
+class TestDemoSessionGating:
+    """
+    Phase 12: demo token gating and adapter routing.
+
+    All tests that validate token behaviour monkeypatch settings.demo_token
+    so no real DEMO_TOKEN env var is required.
+    """
+
+    # ---------------------------------------------------------------------- #
+    # Session creation gating
+    # ---------------------------------------------------------------------- #
+
+    async def test_no_token_creates_standard_session(self, api_client):
+        resp = await api_client.post("/session/create", json={})
+        assert resp.status_code == 200
+        assert resp.json()["adult_mode"] is False
+
+    async def test_valid_token_creates_adult_session(self, api_client, monkeypatch):
+        import app.api.session as s
+        monkeypatch.setattr(s.settings, "demo_token", "secret")
+        resp = await api_client.post("/session/create", json={"demo_token": "secret"})
+        assert resp.status_code == 200
+        assert resp.json()["adult_mode"] is True
+
+    async def test_invalid_token_returns_403(self, api_client, monkeypatch):
+        import app.api.session as s
+        monkeypatch.setattr(s.settings, "demo_token", "correct")
+        resp = await api_client.post("/session/create", json={"demo_token": "wrong"})
+        assert resp.status_code == 403
+
+    async def test_token_not_echoed_in_response(self, api_client, monkeypatch):
+        import app.api.session as s
+        monkeypatch.setattr(s.settings, "demo_token", "secret")
+        resp = await api_client.post("/session/create", json={"demo_token": "secret"})
+        assert "secret" not in resp.text
+        assert "demo_token" not in resp.text
+
+    async def test_valid_token_sets_demo_starting_closeness(self, api_client, monkeypatch):
+        import app.api.session as s
+        monkeypatch.setattr(s.settings, "demo_token", "secret")
+        monkeypatch.setattr(s.settings, "demo_starting_closeness", 3)
+        resp = await api_client.post("/session/create", json={"demo_token": "secret"})
+        assert resp.status_code == 200
+        assert resp.json()["adult_mode"] is True
+        # Verify the session carries relationship_level=3 by checking it
+        # routes to the demo adapter on a subsequent turn.
+        session_id = resp.json()["session_id"]
+        turn_resp = await api_client.post(
+            f"/session/{session_id}/turn", json={"user_text": "hi"}
+        )
+        assert turn_resp.status_code == 200
+
+    # ---------------------------------------------------------------------- #
+    # Adapter selection (constraint 4)
+    # ---------------------------------------------------------------------- #
+
+    async def _make_tracking_adapters(self):
+        """Return (standard_adapter, demo_adapter, calls_list) tracking stubs."""
+        from app.adapters.llm import StubDialogueAdapter
+        calls = []
+
+        class _Tracking(StubDialogueAdapter):
+            def __init__(self, label):
+                self._label = label
+            async def generate(self, system_prompt, conversation_history, user_message):
+                calls.append(self._label)
+                yield f"[{self._label}]"
+
+        return _Tracking("standard"), _Tracking("demo"), calls
+
+    async def test_demo_turn_uses_demo_adapter(self, api_client, monkeypatch):
+        import app.api.session as s
+        std, demo, calls = await self._make_tracking_adapters()
+        monkeypatch.setattr(s, "_llm_adapter", std)
+        monkeypatch.setattr(s, "_demo_llm_adapter", demo)
+        monkeypatch.setattr(s.settings, "demo_token", "secret")
+
+        create = await api_client.post("/session/create", json={"demo_token": "secret"})
+        sid = create.json()["session_id"]
+        await api_client.post(f"/session/{sid}/turn", json={"user_text": "hi"})
+
+        assert calls == ["demo"]
+
+    async def test_demo_stream_uses_demo_adapter(self, api_client, monkeypatch):
+        import app.api.session as s
+        std, demo, calls = await self._make_tracking_adapters()
+        monkeypatch.setattr(s, "_llm_adapter", std)
+        monkeypatch.setattr(s, "_demo_llm_adapter", demo)
+        monkeypatch.setattr(s.settings, "demo_token", "secret")
+
+        create = await api_client.post("/session/create", json={"demo_token": "secret"})
+        sid = create.json()["session_id"]
+        await api_client.post(f"/session/{sid}/turn/stream", json={"user_text": "hi"})
+
+        assert calls == ["demo"]
+
+    async def test_normal_turn_uses_standard_adapter(self, api_client, monkeypatch):
+        import app.api.session as s
+        std, demo, calls = await self._make_tracking_adapters()
+        monkeypatch.setattr(s, "_llm_adapter", std)
+        monkeypatch.setattr(s, "_demo_llm_adapter", demo)
+
+        create = await api_client.post("/session/create", json={})
+        sid = create.json()["session_id"]
+        await api_client.post(f"/session/{sid}/turn", json={"user_text": "hi"})
+
+        assert calls == ["standard"]
+
+    async def test_normal_stream_uses_standard_adapter(self, api_client, monkeypatch):
+        import app.api.session as s
+        std, demo, calls = await self._make_tracking_adapters()
+        monkeypatch.setattr(s, "_llm_adapter", std)
+        monkeypatch.setattr(s, "_demo_llm_adapter", demo)
+
+        create = await api_client.post("/session/create", json={})
+        sid = create.json()["session_id"]
+        await api_client.post(f"/session/{sid}/turn/stream", json={"user_text": "hi"})
+
+        assert calls == ["standard"]

@@ -1,9 +1,8 @@
 # Project Aura - Python Backend Dependencies
 # Target runtime: Python 3.11+, Modal deployment.
-# Exact versions should be pinned once providers are confirmed.
 
 # Core orchestration
-pipecat-ai
+pipecat-ai[livekit]==0.0.108
 modal
 
 # Web framework (session bootstrap API)
@@ -20,28 +19,33 @@ pydantic-settings
 # Utilities
 python-dotenv
 structlog
+httpx>=0.25.0
 
-# Testing (Phase 6)
+# Testing
 pytest
 pytest-asyncio
 httpx
 
-# Provider adapters - uncomment when provider is confirmed
+# ---------------------------------------------------------------------------
+# Voice stack providers
+# ---------------------------------------------------------------------------
 
-# STT
-# deepgram-sdk
-# openai-whisper
-# faster-whisper
+# LLM — standard path
+anthropic
 
-# LLM
-anthropic  # optional — required for AnthropicDialogueAdapter; install: pip install anthropic
-# openai
+# LLM — demo lane (vLLM OpenAI-compatible endpoint on Modal)
+openai>=1.0.0
 
-# TTS / Voice
-# elevenlabs
-# cartesia-ai
+# STT — Deepgram
+deepgram-sdk>=3.2.0
 
-# Memory store (persistent)
+# Transport — LiveKit
+livekit-api
+
+# TTS — Fish Audio S2 Pro (self-hosted via modal_fish.py)
+# Fish Audio uses httpx (already listed above); no extra SDK required.
+
+# Memory store (persistent) — deferred
 # supabase
 # asyncpg
 # aiosqlite

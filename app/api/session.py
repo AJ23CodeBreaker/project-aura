@@ -18,20 +18,26 @@ LiveKit migration:
       transport_provider   = "livekit"
   - The server bot joins the same room in the background using a bot token.
   - Standard sessions remain text-only.
+
+Typed-text playback:
+  - POST /session/{session_id}/tts converts assistant text into browser-playable
+    WAV audio so the frontend Play Voice button can speak typed-mode replies.
 """
 
 import asyncio
 import concurrent.futures
 import datetime
 import hmac
+import io
 import logging
 import secrets
 import threading
-from typing import Optional
+import wave
+from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.adapters.factory import get_demo_llm_adapter, get_llm_adapter
@@ -99,6 +105,10 @@ class TurnRequest(BaseModel):
 class TurnResponse(BaseModel):
     session_id: str
     assistant_text: str
+
+
+class TTSRequest(BaseModel):
+    text: str
 
 
 # --------------------------------------------------------------------------- #
@@ -235,6 +245,83 @@ def _make_livekit_tokens(room_name: str) -> tuple[str, str]:
     )
 
     return user_token, bot_token
+
+
+# --------------------------------------------------------------------------- #
+# Internal helpers — typed text TTS playback
+# --------------------------------------------------------------------------- #
+
+async def _single_text_stream(text: str) -> AsyncIterator[str]:
+    """
+    Adapts one text string into the async text-stream interface expected by
+    FishAudioTTSAdapter.
+    """
+    yield text
+
+
+def _pcm16_mono_16k_to_wav(pcm_bytes: bytes) -> bytes:
+    """
+    Wrap 16 kHz mono signed 16-bit PCM bytes in a WAV container so browser
+    Audio() can play the result.
+    """
+    if not pcm_bytes:
+        return b""
+
+    out = io.BytesIO()
+    with wave.open(out, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(pcm_bytes)
+
+    return out.getvalue()
+
+
+async def _synthesize_text_to_wav(text: str) -> bytes:
+    """
+    Generate browser-playable WAV audio for a typed-mode assistant reply.
+
+    Internally reuses FishAudioTTSAdapter, which calls either:
+      - hosted Fish API if FISH_AUDIO_URL=https://api.fish.audio, or
+      - self-hosted Modal aura-fish if FISH_AUDIO_URL points there.
+
+    FishAudioTTSAdapter yields 16 kHz mono PCM chunks, so this helper wraps
+    those chunks into a WAV container for the browser.
+    """
+    from app.adapters.tts import FishAudioTTSAdapter
+
+    adapter = None
+
+    try:
+        adapter = FishAudioTTSAdapter(
+            base_url=settings.fish_audio_url,
+            api_key=settings.fish_audio_api_key,
+            voice_id=settings.fish_audio_voice_id or "",
+        )
+
+        pcm_parts: list[bytes] = []
+        async for chunk in adapter.synthesize_stream(_single_text_stream(text)):
+            if chunk:
+                pcm_parts.append(chunk)
+
+        pcm_bytes = b"".join(pcm_parts)
+
+        if not pcm_bytes:
+            raise RuntimeError("Fish TTS returned no PCM audio.")
+
+        wav_bytes = _pcm16_mono_16k_to_wav(pcm_bytes)
+
+        if not wav_bytes:
+            raise RuntimeError("Could not wrap PCM audio as WAV.")
+
+        return wav_bytes
+
+    finally:
+        if adapter is not None:
+            try:
+                await adapter.close()
+            except Exception as exc:
+                logger.warning("tts_adapter_close_failed error=%s", exc)
 
 
 # --------------------------------------------------------------------------- #
@@ -467,6 +554,65 @@ async def turn_stream(session_id: str, request: TurnRequest) -> StreamingRespons
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/session/{session_id}/tts")
+async def text_to_speech(session_id: str, request: TTSRequest) -> Response:
+    """
+    Generate browser-playable WAV audio for a typed-mode assistant reply.
+
+    This endpoint is intentionally separate from /turn and /turn/stream:
+      - /turn/stream handles dialogue + memory + relationship state
+      - /tts only speaks the assistant text that was already generated
+
+    Frontend usage:
+      POST /session/{session_id}/tts
+      body: { "text": "assistant text" }
+      response: audio/wav
+    """
+    session = await _session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if session.status == SessionStatus.ENDED:
+        raise HTTPException(status_code=404, detail="Session has ended.")
+
+    text = (request.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required.")
+
+    if not settings.fish_audio_url:
+        raise HTTPException(status_code=500, detail="FISH_AUDIO_URL is not configured.")
+
+    try:
+        logger.info(
+            "typed_tts_start session=%s text_len=%s voice_id_set=%s",
+            session_id,
+            len(text),
+            bool(settings.fish_audio_voice_id),
+        )
+
+        wav_bytes = await _synthesize_text_to_wav(text)
+
+        logger.info(
+            "typed_tts_success session=%s wav_bytes=%s",
+            session_id,
+            len(wav_bytes),
+        )
+
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": 'inline; filename="aura-reply.wav"',
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("typed_tts_failed session=%s error=%s", session_id, exc)
+        raise HTTPException(status_code=500, detail="TTS generation failed.")
 
 
 @app.post("/session/{session_id}/end")

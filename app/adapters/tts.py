@@ -22,6 +22,14 @@ from typing import AsyncIterator, Optional
 logger = logging.getLogger(__name__)
 
 
+def _mask_id(value: str) -> str:
+    if not value:
+        return "<missing>"
+    if len(value) <= 10:
+        return value[:2] + "***"
+    return value[:6] + "..." + value[-6:]
+
+
 class TTSAdapter(ABC):
 
     @abstractmethod
@@ -63,6 +71,10 @@ class FishAudioTTSAdapter(TTSAdapter):
 
     Sends buffered text to Fish, receives WAV audio, decodes it, converts it
     to 16 kHz mono linear16 PCM, and yields PCM bytes in small chunks.
+
+    Important demo-safety rule:
+      FISH_AUDIO_VOICE_ID must be configured. If it is missing, fail loudly
+      instead of allowing Fish to fall back to a default/random voice.
     """
 
     _SPEED_MAP = {
@@ -94,14 +106,31 @@ class FishAudioTTSAdapter(TTSAdapter):
             )
 
         self._api_key = api_key or os.getenv("FISH_AUDIO_API_KEY", "")
+
         self._voice_id = (
             voice_id
             or os.getenv("FISH_AUDIO_VOICE_ID")
             or os.getenv("TTS_VOICE_ID")
             or ""
-        )
+        ).strip()
+
+        if not self._voice_id:
+            raise ValueError(
+                "FISH_AUDIO_VOICE_ID is not set. "
+                "Set it to the Fish voice/model reference_id so Aura does not "
+                "fall back to a default or random voice."
+            )
+
         self._format = audio_format
         self._client = _httpx.AsyncClient(timeout=120.0)
+
+        logger.info(
+            "fish_tts_adapter_initialized base_url=%s voice_id=%s format=%s api_key_set=%s",
+            self._base_url,
+            _mask_id(self._voice_id),
+            self._format,
+            bool(self._api_key),
+        )
 
     def _wav_to_pcm16_mono_16k(self, wav_bytes: bytes) -> bytes:
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
@@ -154,10 +183,8 @@ class FishAudioTTSAdapter(TTSAdapter):
             "format": self._format,
             "normalize": True,
             "streaming": False,
+            "reference_id": self._voice_id,
         }
-
-        if self._voice_id:
-            request_body["reference_id"] = self._voice_id
 
         hint = (emotional_hint or "").lower()
         speed = self._SPEED_MAP.get(hint)
@@ -169,10 +196,11 @@ class FishAudioTTSAdapter(TTSAdapter):
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         logger.info(
-            "fish_tts_request_start text_len=%s voice_id_set=%s format=%s",
+            "fish_tts_request_start text_len=%s voice_id=%s format=%s speed=%s",
             len(text),
-            bool(self._voice_id),
+            _mask_id(self._voice_id),
             self._format,
+            request_body.get("speed", 1.0),
         )
 
         try:
